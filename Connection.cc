@@ -177,7 +177,8 @@ unsigned int Connection::get_leader() {
 void Connection::reset() {
   // FIXME: Actually check the connection, drain all bufferevents, drain op_q.
   for (auto &s : servers) {
-    assert(s.op_queue.size() == 0);
+    //assert(s.op_queue.size() == 0);
+    assert(s.op_vector.size() == 0);
     s.read_state = IDLE;
     s.write_state = INIT_WRITE;
   }
@@ -222,7 +223,10 @@ void Connection::start_loading() {
 void Connection::issue_something(server_t* serv, double now) {
   char key[256];
   // FIXME: generate key distribution here!
-  string keystr = keygen->generate(lrand48() % options.records);
+  //string keystr = keygen->generate(lrand48() % options.records);
+  
+  //ANA: align for flash sector size of 512 bytes
+  string keystr = keygen->generate((lrand48() % options.records) & ~7);
   strcpy(key, keystr.c_str());
 
   if (drand48() < options.update) {
@@ -257,10 +261,11 @@ void Connection::issue_get(server_t* serv, const char* key, double now) {
 #endif
 
   op.type = Operation::GET;
-  serv->op_queue.push(op);
 
   if (serv->read_state == IDLE) serv->read_state = WAITING_FOR_GET;
-  l = serv->prot->get_request(key);
+  l = serv->prot->get_request(key, &op);
+  //serv->op_queue.push(op);
+  serv->op_vector.push_back(op); //ANA NEW!
   if (serv->read_state != LOADING) stats.tx_bytes += l;
 }
 
@@ -280,10 +285,11 @@ void Connection::issue_set(server_t* serv, const char* key, const char* value,
 #endif
 
   op.type = Operation::SET;
-  serv->op_queue.push(op);
-
   if (serv->read_state == IDLE) serv->read_state = WAITING_FOR_SET;
-  l = serv->prot->set_request(key, value, length);
+  l = serv->prot->set_request(key, value, length, &op);
+  //serv->op_queue.push(op);
+  serv->op_vector.push_back(op); //ANA NEW!
+
   if (serv->read_state != LOADING) stats.tx_bytes += l;
 }
 
@@ -309,6 +315,25 @@ void Connection::pop_op(server_t* serv) {
   }
 }
 
+void Connection::erase_op(server_t* serv, Operation* op) {
+  assert(serv->op_vector.size() > 0);
+
+  for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
+	  if (it->req_handle == op->req_handle){
+		 serv->op_vector.erase(it);
+		 free(op->req_handle); //FIXME: check this
+		 break;
+	  }
+  }
+
+  if (serv->read_state == LOADING) return;
+  serv->read_state = IDLE;
+
+  // Advance the read state machine.
+  if (serv->op_vector.size() > 0) 
+    serv->read_state = WAITING_FOR_GET;
+    
+}
 /**
  * Finish up (record stats) an operation that just returned from the
  * server.
@@ -341,7 +366,10 @@ void Connection::finish_op(server_t* serv, Operation *op) {
   }
 
   last_rx = now;
-  pop_op(serv);
+  
+  erase_op(serv, op); 
+  //pop_op(serv); //FIXME: don't pop off next outstanding op right away 
+  				//(wait to recv resp, then pop off one with matching req_handle)
   drive_write_machine(leader);
 }
 
@@ -420,7 +448,8 @@ void Connection::drive_write_machine(server_t* serv, double now) {
       break;
 
     case ISSUING:
-      if (serv->op_queue.size() >= (size_t) options.depth) {
+      //if (serv->op_queue.size() >= (size_t) options.depth) {
+      if (serv->op_vector.size() >= (size_t) options.depth) {
         serv->write_state = WAITING_FOR_OPQ;
         return;
       } else if (now < next_time) {
@@ -439,12 +468,14 @@ void Connection::drive_write_machine(server_t* serv, double now) {
 
       issue_something(serv, now);
       last_tx = now;
-      stats.log_op(serv->op_queue.size());
+      //stats.log_op(serv->op_queue.size());
+      stats.log_op(serv->op_vector.size());
       next_time += iagen->generate();
 
       if (options.skip && options.lambda > 0.0 &&
           now - next_time > 0.005000 &&
-          serv->op_queue.size() >= (size_t) options.depth) {
+          //serv->op_queue.size() >= (size_t) options.depth) {
+          serv->op_vector.size() >= (size_t) options.depth) {
 
         while (next_time < now - 0.004000) {
           stats.skips++;
@@ -466,7 +497,8 @@ void Connection::drive_write_machine(server_t* serv, double now) {
       break;
 
     case WAITING_FOR_OPQ:
-      if (serv->op_queue.size() >= (size_t) options.depth) return;
+      //if (serv->op_queue.size() >= (size_t) options.depth) return;
+      if (serv->op_vector.size() >= (size_t) options.depth) return;
       serv->write_state = ISSUING;
       break;
 
@@ -482,11 +514,13 @@ void Connection::read_callback(server_t* serv) {
   struct evbuffer *input = bufferevent_get_input(serv->bev);
   Operation *op = NULL;
 
-  if (serv->op_queue.size() == 0) V("Spurious read callback.");
+  //if (serv->op_queue.size() == 0) V("Spurious read callback.");
+  if (serv->op_vector.size() == 0) V("Spurious read callback.");
 
   while (1) {
-    if (serv->op_queue.size() > 0) {
-      op = &serv->op_queue.front();
+    //if (serv->op_queue.size() > 0) {
+    if (serv->op_vector.size() > 0) {
+      //op = &serv->op_queue.front(); //ANA
     } else {
       // since we're in a loop, may need to escape if out of op's to process
       return;
@@ -497,17 +531,39 @@ void Connection::read_callback(server_t* serv) {
     case IDLE: return;  // We munched all the data we expected?
 
     case WAITING_FOR_GET:
-    case WAITING_FOR_SET:
-      assert(serv->op_queue.size() > 0);
-      if (!serv->prot->handle_response(input, op)) return;
+    case WAITING_FOR_SET:{
+      //assert(serv->op_queue.size() > 0);
+      assert(serv->op_vector.size() > 0);
+      //if (!serv->prot->handle_response(input, op)) return;
+      void* req_handle = (void*)serv->prot->handle_response(input, op);
+	  if (!req_handle) return;
+	  //ANA NEW!
+	  for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
+		  if (it->req_handle == req_handle){
+			  op = &(*it);
+			  break;
+		  }
+	  }
       finish_op(serv, op); // sets read_state = IDLE
-      break;
+	} break;
+						 
 
-    case LOADING:
-      assert(serv->op_queue.size() > 0);
-      if (!serv->prot->handle_response(input, op)) return;
+    case LOADING: {
+      //assert(serv->op_queue.size() > 0);
+      assert(serv->op_vector.size() > 0);
+      //if (!serv->prot->handle_response(input, op)) return;
+      void* req_handle = (void*)serv->prot->handle_response(input, op);
+	  if (!req_handle) return;
+	  //ANA NEW!
+	  for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
+		  if (it->req_handle == req_handle){
+			  op = &(*it);
+			  break;
+		  }
+	  }
       loader_completed++;
-      pop_op(serv);
+      //pop_op(serv);
+	  erase_op(serv, op);
 
       if (loader_completed == options.records) {
         D("Finished loading.");
@@ -527,7 +583,7 @@ void Connection::read_callback(server_t* serv) {
           loader_issued++;
         }
       }
-      break;
+	} break;
 
     case CONN_SETUP:
       assert(options.binary);
@@ -547,7 +603,8 @@ void Connection::print_load_state() {
   printf("Loads Required: %d, Complete: %d, Issued: %d\n",
     options.records, loader_completed, loader_issued);
   for (auto &s : servers) {
-    printf("Server: %d, Queue: %zu\n", s.id, s.op_queue.size());
+    //printf("Server: %d, Queue: %zu\n", s.id, s.op_queue.size());
+    printf("Server: %d, Queue: %zu\n", s.id, s.op_vector.size());
   }
 }
 

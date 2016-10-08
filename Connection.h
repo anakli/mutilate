@@ -49,6 +49,7 @@ typedef struct {
     Protocol*             prot;
     struct bufferevent*   bev;
     std::queue<Operation> op_queue;
+    std::vector<Operation> op_vector;
     read_state_enum       read_state;
     write_state_enum      write_state;
 } server_t;
@@ -112,6 +113,7 @@ private:
 
   // state machine functions / event processing
   void pop_op(server_t* serv);
+  void erase_op(server_t* serv, Operation* op);
   void finish_op(server_t* serv, Operation *op);
   void issue_something(server_t* serv, double now = 0.0);
   void drive_write_machine(server_t* serv, double now = 0.0);

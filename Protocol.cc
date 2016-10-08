@@ -23,7 +23,7 @@
 /**
  * Send an ascii get request.
  */
-int ProtocolAscii::get_request(const char* key) {
+int ProtocolAscii::get_request(const char* key, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(
     bufferevent_get_output(bev), "get %s\r\n", key);
@@ -34,7 +34,7 @@ int ProtocolAscii::get_request(const char* key) {
 /**
  * Send an ascii set request.
  */
-int ProtocolAscii::set_request(const char* key, const char* value, int len) {
+int ProtocolAscii::set_request(const char* key, const char* value, int len, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(bufferevent_get_output(bev),
                           "set %s 0 0 %d\r\n", key, len);
@@ -48,7 +48,8 @@ int ProtocolAscii::set_request(const char* key, const char* value, int len) {
 /**
  * Handle an ascii response.
  */
-bool ProtocolAscii::handle_response(evbuffer *input, Operation* op) {
+//bool ProtocolAscii::handle_response(evbuffer *input, Operation* op) {
+uint64_t ProtocolAscii::handle_response(evbuffer *input, Operation* op) {
   char *buf = NULL;
   int len;
   size_t n_read_out;
@@ -59,7 +60,7 @@ bool ProtocolAscii::handle_response(evbuffer *input, Operation* op) {
     case WAITING_FOR_GET:
     case WAITING_FOR_END:
       buf = evbuffer_readln(input, &n_read_out, EVBUFFER_EOL_CRLF);
-      if (buf == NULL) return false;
+      if (buf == NULL) return 0;
 
       stats.rx_bytes += n_read_out + 2;
 
@@ -88,7 +89,7 @@ bool ProtocolAscii::handle_response(evbuffer *input, Operation* op) {
 
     case WAITING_FOR_GET_DATA:
       len = evbuffer_get_length(input);
-      if (len < data_length + 2) return false;
+      if (len < data_length + 2) return 0;
       evbuffer_drain(input, data_length + 2);
       read_state = WAITING_FOR_END;
       stats.rx_bytes += data_length + 2;
@@ -134,9 +135,29 @@ bool ProtocolBinary::setup_connection_r(evbuffer* input) {
 /**
  * Send a binary get request.
  */
-int ProtocolBinary::get_request(const char* key) {
-  uint16_t keylen = strlen(key);
+int ProtocolBinary::get_request(const char* key, Operation* op) {
+  
+  struct bio_vec bvec_handle;
+  unsigned long lba = atol(key);
+  unsigned int lba_count = 8;
+  uint16_t magic = sizeof(binary_header_blk_t);
+  void *req_handle = malloc(sizeof (int));
+  if (req_handle == NULL){
+	printf("error: out of memory for request handle\n");
+  }
+  binary_header_blk_t h = { magic, CMD_GET, req_handle, 
+                        bvec_handle, lba, 
+                        lba_count };
+  
+	
+  //TODO: store req_handle in op that goes into op_vector
+  op->req_handle = req_handle;
 
+  bufferevent_write(bev, &h, sizeof(binary_header_blk_t));
+  //printf("lba is %lu, sizeof bin hdr is %lu\n", lba, sizeof(binary_header_blk_t));
+  return sizeof (binary_header_blk_t);
+  /*
+  uint16_t keylen = strlen(key);
   // each line is 4-bytes
   binary_header_t h = { 0x80, CMD_GET, htons(keylen),
                         0x00, 0x00, {htons(0)},
@@ -145,12 +166,31 @@ int ProtocolBinary::get_request(const char* key) {
   bufferevent_write(bev, &h, 24); // size does not include extras
   bufferevent_write(bev, key, keylen);
   return 24 + keylen;
+  */
 }
 
 /**
  * Send a binary set request.
  */
-int ProtocolBinary::set_request(const char* key, const char* value, int len) {
+int ProtocolBinary::set_request(const char* key, const char* value, int len, Operation* op) {
+  struct bio_vec bvec_handle;
+  unsigned long lba = atol(key);
+  unsigned int lba_count = 8;
+  uint16_t magic = sizeof(binary_header_blk_t);
+  void *req_handle = malloc(sizeof (int));
+  if (req_handle == NULL){
+	printf("error: out of memory for request handle\n");
+  }
+  binary_header_blk_t h = { magic, CMD_SET, req_handle, //FIXME: req_handle here!
+                        bvec_handle, lba, 
+                        lba_count };
+  
+  op->req_handle = req_handle;
+  
+  bufferevent_write(bev, &h, sizeof(binary_header_blk_t));
+  bufferevent_write(bev, value, len);
+  return sizeof(binary_header_blk_t) + len;
+  /*
   uint16_t keylen = strlen(key);
 
   // each line is 4-bytes
@@ -162,6 +202,7 @@ int ProtocolBinary::set_request(const char* key, const char* value, int len) {
   bufferevent_write(bev, key, keylen);
   bufferevent_write(bev, value, len);
   return 24 + h.body_len;
+  */
 }
 
 /**
@@ -170,7 +211,30 @@ int ProtocolBinary::set_request(const char* key, const char* value, int len) {
  * @param input evBuffer to read response from
  * @return  true if consumed, false if not enough data in buffer.
  */
-bool ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
+//bool ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
+uint64_t ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
+	
+  // Read the first 24 bytes as a header
+  unsigned int length = evbuffer_get_length(input);
+  if (length < sizeof(binary_header_blk_t)) return 0;
+  binary_header_blk_t* h =
+    reinterpret_cast<binary_header_blk_t*>(evbuffer_pullup(input, sizeof(binary_header_blk_t)));
+  assert(h);
+
+  unsigned int targetLen = sizeof(binary_header_blk_t);
+  if (h->opcode == CMD_GET) { //wait for whole response
+  	//FIXME: 512 is sector size
+  	targetLen += h->lba_count * 512;
+  	if (length < targetLen) return 0;
+  }
+
+  //printf("op handle: %x, req_handle: %x\n", op->req_handle, h->req_handle);  
+
+  evbuffer_drain(input, targetLen);
+  stats.rx_bytes += targetLen;
+  return (uint64_t) h->req_handle;
+	
+/*	
   // Read the first 24 bytes as a header
   int length = evbuffer_get_length(input);
   if (length < 24) return false;
@@ -198,6 +262,7 @@ bool ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
   evbuffer_drain(input, targetLen);
   stats.rx_bytes += targetLen;
   return true;
+  */
 }
 
 /* Etcd get request */
@@ -207,7 +272,7 @@ static const char* get_req = "GET /v2/keys/test/%s HTTP/1.1\r\n\r\n";
 static const char* get_req_linear = "GET /v2/keys/test/%s?quorum=true HTTP/1.1\r\n\r\n";
 
 /* Perform a get request against etcd */
-int ProtocolEtcd::get_request(const char* key) {
+int ProtocolEtcd::get_request(const char* key, Operation * op = NULL) {
   int l;
   const char *req = get_req;
   if (opts.linear) {
@@ -219,7 +284,7 @@ int ProtocolEtcd::get_request(const char* key) {
 }
 
 /* Perform a set request against etcd */
-int ProtocolEtcd::set_request(const char* key, const char* value, int len) {
+int ProtocolEtcd::set_request(const char* key, const char* value, int len, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(
     bufferevent_get_output(bev),
@@ -234,7 +299,8 @@ int ProtocolEtcd::set_request(const char* key, const char* value, int len) {
 }
 
 /* Handle a response from etcd */
-bool ProtocolEtcd::handle_response(evbuffer* input, Operation* op) {
+//bool ProtocolEtcd::handle_response(evbuffer* input, Operation* op) {
+uint64_t ProtocolEtcd::handle_response(evbuffer* input, Operation* op) {
   char *buf = NULL;
   struct evbuffer_ptr ptr;
   size_t n_read_out;
@@ -300,19 +366,19 @@ bool ProtocolEtcd::handle_response(evbuffer* input, Operation* op) {
       if (ptr.pos < 0) {
         stats.rx_bytes += evbuffer_get_length(input) - 1;
         evbuffer_drain(input, evbuffer_get_length(input) - 1);
-        return false;
+        return 0;
       }
       stats.rx_bytes += ptr.pos + 5;
       evbuffer_drain(input, ptr.pos + 5);
       read_state = WAITING_FOR_HTTP;
-      return true;
+      return 1;
 
     case LEADER_CHANGED:
       ptr = evbuffer_search(input, "X-Raft-Leader: ", 15, NULL);
       if (ptr.pos < 0) {
         stats.rx_bytes += evbuffer_get_length(input) - 14;
         evbuffer_drain(input, evbuffer_get_length(input) - 14);
-        return false;
+        return 0;
       }
       stats.rx_bytes += ptr.pos + 15;
       evbuffer_drain(input, ptr.pos + 15);
@@ -349,7 +415,7 @@ static const char* http_get_req = "GET /%s HTTP/1.1\r\n\r\n";
 static const char* http_set_req = "POST /%s HTTP/1.1\r\nContent-Length: %d\r\n";
 
 /* Perform a get request against a HTTP server */
-int ProtocolHttp::get_request(const char* key) {
+int ProtocolHttp::get_request(const char* key, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(bufferevent_get_output(bev), http_get_req, key);
   if (read_state == IDLE) read_state = WAITING_FOR_HTTP;
@@ -357,7 +423,7 @@ int ProtocolHttp::get_request(const char* key) {
 }
 
 /* Perform a set request against a HTTP server */
-int ProtocolHttp::set_request(const char* key, const char* value, int len) {
+int ProtocolHttp::set_request(const char* key, const char* value, int len, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(bufferevent_get_output(bev),
                           http_set_req, key, len + 6);
@@ -370,7 +436,8 @@ int ProtocolHttp::set_request(const char* key, const char* value, int len) {
 }
 
 /* Handle a response from a HTTP server */
-bool ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
+//bool ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
+uint64_t ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
   char *buf = NULL;
   struct evbuffer_ptr ptr;
   static size_t n_read_out;
@@ -380,7 +447,7 @@ bool ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
 
     case WAITING_FOR_HTTP:
       buf = evbuffer_readln(input, &n_read_out, EVBUFFER_EOL_CRLF);
-      if (buf == NULL) return false;
+      if (buf == NULL) return 0;
 
       stats.rx_bytes += n_read_out + 2;
 
@@ -400,7 +467,7 @@ bool ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
       if (ptr.pos < 0) {
         stats.rx_bytes += evbuffer_get_length(input) - LEN + 1;
         evbuffer_drain(input, evbuffer_get_length(input) - LEN + 1);
-        return false;
+        return 0;
       }
       stats.rx_bytes += ptr.pos + LEN;
       evbuffer_drain(input, ptr.pos + LEN);
@@ -415,13 +482,13 @@ bool ProtocolHttp::handle_response(evbuffer* input, Operation* op) {
       if (ptr.pos < 0) {
         stats.rx_bytes += evbuffer_get_length(input) - LEN + 1;
         evbuffer_drain(input, evbuffer_get_length(input) - LEN + 1);
-        return false;
+        return 0;
       }
       stats.rx_bytes += ptr.pos + LEN;
       evbuffer_drain(input, ptr.pos + LEN + n_read_out);
       read_state = WAITING_FOR_HTTP;
       #undef LEN
-      return true;
+      return 1;
 
     default: printf("state: %d\n", read_state); DIE("Unimplemented!");
     }

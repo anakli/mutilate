@@ -18,9 +18,9 @@ public:
 
   virtual bool setup_connection_w() = 0;
   virtual bool setup_connection_r(evbuffer* input) = 0;
-  virtual int  get_request(const char* key) = 0;
-  virtual int  set_request(const char* key, const char* value, int len) = 0;
-  virtual bool handle_response(evbuffer* input, Operation* op) = 0;
+  virtual int  get_request(const char* key, Operation* op) = 0;
+  virtual int  set_request(const char* key, const char* value, int len, Operation* op) = 0;
+  virtual uint64_t handle_response(evbuffer* input, Operation* op) = 0;
 
 protected:
   options_t       opts;
@@ -37,9 +37,9 @@ public:
 
   virtual bool setup_connection_w() { return true; }
   virtual bool setup_connection_r(evbuffer* input) { return true; }
-  virtual int  get_request(const char* key);
-  virtual int  set_request(const char* key, const char* value, int len);
-  virtual bool handle_response(evbuffer* input, Operation* op);
+  virtual int  get_request(const char* key, Operation * op);
+  virtual int  set_request(const char* key, const char* value, int len, Operation* op);
+  virtual uint64_t handle_response(evbuffer* input, Operation* op);
 
 private:
   enum read_fsm {
@@ -61,9 +61,9 @@ public:
 
   virtual bool setup_connection_w();
   virtual bool setup_connection_r(evbuffer* input);
-  virtual int  get_request(const char* key);
-  virtual int  set_request(const char* key, const char* value, int len);
-  virtual bool handle_response(evbuffer* input, Operation* op);
+  virtual int  get_request(const char* key, Operation* op);
+  virtual int  set_request(const char* key, const char* value, int len, Operation* op);
+  virtual uint64_t handle_response(evbuffer* input, Operation* op);
 };
 
 class ProtocolEtcd : public Protocol {
@@ -74,9 +74,9 @@ public:
 
   virtual bool setup_connection_w() { return true; }
   virtual bool setup_connection_r(evbuffer* input) { return true; }
-  virtual int  get_request(const char* key);
-  virtual int  set_request(const char* key, const char* value, int len);
-  virtual bool handle_response(evbuffer* input, Operation* op);
+  virtual int  get_request(const char* key, Operation * op);
+  virtual int  set_request(const char* key, const char* value, int len, Operation* op);
+  virtual uint64_t handle_response(evbuffer* input, Operation* op);
 
 protected:
   enum read_fsm {
@@ -98,9 +98,9 @@ public:
 
   virtual bool setup_connection_w() { return true; }
   virtual bool setup_connection_r(evbuffer* input) { return true; }
-  virtual int  get_request(const char* key);
-  virtual int  set_request(const char* key, const char* value, int len);
-  virtual bool handle_response(evbuffer* input, Operation* op);
+  virtual int  get_request(const char* key, Operation * op);
+  virtual int  set_request(const char* key, const char* value, int len, Operation* op);
+  virtual uint64_t handle_response(evbuffer* input, Operation* op);
 
 protected:
   enum read_fsm {
