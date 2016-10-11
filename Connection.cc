@@ -320,8 +320,8 @@ void Connection::erase_op(server_t* serv, Operation* op) {
 
   for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
 	  if (it->req_handle == op->req_handle){
+		 free(op->req_handle); 
 		 serv->op_vector.erase(it);
-		 free(op->req_handle); //FIXME: check this
 		 break;
 	  }
   }
