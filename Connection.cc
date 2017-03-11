@@ -222,10 +222,10 @@ void Connection::start_loading() {
  */
 void Connection::issue_something(server_t* serv, double now) {
   char key[256];
-  // FIXME: generate key distribution here!
+  // FIXME: only support random key distribution for now
   //string keystr = keygen->generate(lrand48() % options.records);
   
-  //ANA: align for flash sector size of 512 bytes
+  // align for flash sector size of 512 bytes
   string keystr = keygen->generate((lrand48() % options.records) & ~7);
   strcpy(key, keystr.c_str());
 
@@ -233,14 +233,14 @@ void Connection::issue_something(server_t* serv, double now) {
     int index = lrand48() % (1024 * 1024);
     issue_set(serv, key, &random_char[index], valuesize->generate(), now);
   } else {
-    issue_get(serv, key, now);
+    issue_get(serv, key, valuesize->generate(), now);
   }
 }
 
 /**
  * Issue a get request to the server.
  */
-void Connection::issue_get(server_t* serv, const char* key, double now) {
+void Connection::issue_get(server_t* serv, const char* key, int length, double now) {
   Operation op;
   int l;
 
@@ -263,9 +263,9 @@ void Connection::issue_get(server_t* serv, const char* key, double now) {
   op.type = Operation::GET;
 
   if (serv->read_state == IDLE) serv->read_state = WAITING_FOR_GET;
-  l = serv->prot->get_request(key, &op);
+  l = serv->prot->get_request(key, length, &op);
   //serv->op_queue.push(op);
-  serv->op_vector.push_back(op); //ANA NEW!
+  serv->op_vector.push_back(op); 
   if (serv->read_state != LOADING) stats.tx_bytes += l;
 }
 
@@ -288,7 +288,7 @@ void Connection::issue_set(server_t* serv, const char* key, const char* value,
   if (serv->read_state == IDLE) serv->read_state = WAITING_FOR_SET;
   l = serv->prot->set_request(key, value, length, &op);
   //serv->op_queue.push(op);
-  serv->op_vector.push_back(op); //ANA NEW!
+  serv->op_vector.push_back(op); 
 
   if (serv->read_state != LOADING) stats.tx_bytes += l;
 }
@@ -532,12 +532,9 @@ void Connection::read_callback(server_t* serv) {
 
     case WAITING_FOR_GET:
     case WAITING_FOR_SET:{
-      //assert(serv->op_queue.size() > 0);
       assert(serv->op_vector.size() > 0);
-      //if (!serv->prot->handle_response(input, op)) return;
       void* req_handle = (void*)serv->prot->handle_response(input, op);
 	  if (!req_handle) return;
-	  //ANA NEW!
 	  for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
 		  if (it->req_handle == req_handle){
 			  op = &(*it);
@@ -549,12 +546,9 @@ void Connection::read_callback(server_t* serv) {
 						 
 
     case LOADING: {
-      //assert(serv->op_queue.size() > 0);
       assert(serv->op_vector.size() > 0);
-      //if (!serv->prot->handle_response(input, op)) return;
       void* req_handle = (void*)serv->prot->handle_response(input, op);
 	  if (!req_handle) return;
-	  //ANA NEW!
 	  for (std::vector<Operation>::iterator it = serv->op_vector.begin() ; it != serv->op_vector.end(); ++it){
 		  if (it->req_handle == req_handle){
 			  op = &(*it);

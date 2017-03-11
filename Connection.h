@@ -119,7 +119,7 @@ private:
   void drive_write_machine(server_t* serv, double now = 0.0);
 
   // request functions
-  void issue_get(server_t* serv, const char* key, double now = 0.0);
+  void issue_get(server_t* serv, const char* key, int length, double now = 0.0);
   void issue_set(server_t* serv, const char* key, const char* value,
                  int length, double now = 0.0);
 };

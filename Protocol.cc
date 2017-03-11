@@ -20,10 +20,13 @@
 
 #define unlikely(x) __builtin_expect((x),0)
 
+// sector size on Flash (usually 512 or 4096 bytes)
+#define SECTOR_SIZE 512 
+
 /**
  * Send an ascii get request.
  */
-int ProtocolAscii::get_request(const char* key, Operation* op = NULL) {
+int ProtocolAscii::get_request(const char* key, int length = 0,  Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(
     bufferevent_get_output(bev), "get %s\r\n", key);
@@ -135,11 +138,11 @@ bool ProtocolBinary::setup_connection_r(evbuffer* input) {
 /**
  * Send a binary get request.
  */
-int ProtocolBinary::get_request(const char* key, Operation* op) {
+int ProtocolBinary::get_request(const char* key, int len, Operation* op) {
   
   struct bio_vec bvec_handle;
   unsigned long lba = atol(key);
-  unsigned int lba_count = 8;
+  unsigned int lba_count = len / SECTOR_SIZE; 
   uint16_t magic = sizeof(binary_header_blk_t);
   void *req_handle = malloc(sizeof (int));
   if (req_handle == NULL){
@@ -175,7 +178,7 @@ int ProtocolBinary::get_request(const char* key, Operation* op) {
 int ProtocolBinary::set_request(const char* key, const char* value, int len, Operation* op) {
   struct bio_vec bvec_handle;
   unsigned long lba = atol(key);
-  unsigned int lba_count = 8;
+  unsigned int lba_count = len / SECTOR_SIZE; 
   uint16_t magic = sizeof(binary_header_blk_t);
   void *req_handle = malloc(sizeof (int));
   if (req_handle == NULL){
@@ -224,12 +227,11 @@ uint64_t ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
   unsigned int targetLen = sizeof(binary_header_blk_t);
   if (h->opcode == CMD_GET) { //wait for whole response
   	//FIXME: 512 is sector size
-  	targetLen += h->lba_count * 512;
+  	targetLen += h->lba_count * SECTOR_SIZE;
   	if (length < targetLen) return 0;
   }
 
   //printf("op handle: %x, req_handle: %x\n", op->req_handle, h->req_handle);  
-
   evbuffer_drain(input, targetLen);
   stats.rx_bytes += targetLen;
   return (uint64_t) h->req_handle;
@@ -272,7 +274,7 @@ static const char* get_req = "GET /v2/keys/test/%s HTTP/1.1\r\n\r\n";
 static const char* get_req_linear = "GET /v2/keys/test/%s?quorum=true HTTP/1.1\r\n\r\n";
 
 /* Perform a get request against etcd */
-int ProtocolEtcd::get_request(const char* key, Operation * op = NULL) {
+int ProtocolEtcd::get_request(const char* key, int length = 0, Operation * op = NULL) {
   int l;
   const char *req = get_req;
   if (opts.linear) {
@@ -415,7 +417,7 @@ static const char* http_get_req = "GET /%s HTTP/1.1\r\n\r\n";
 static const char* http_set_req = "POST /%s HTTP/1.1\r\nContent-Length: %d\r\n";
 
 /* Perform a get request against a HTTP server */
-int ProtocolHttp::get_request(const char* key, Operation* op = NULL) {
+int ProtocolHttp::get_request(const char* key, int length = 0, Operation* op = NULL) {
   int l;
   l = evbuffer_add_printf(bufferevent_get_output(bev), http_get_req, key);
   if (read_state == IDLE) read_state = WAITING_FOR_HTTP;
