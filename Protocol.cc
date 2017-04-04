@@ -140,7 +140,6 @@ bool ProtocolBinary::setup_connection_r(evbuffer* input) {
  */
 int ProtocolBinary::get_request(const char* key, int len, Operation* op) {
   
-  struct bio_vec bvec_handle;
   unsigned long lba = atol(key);
   unsigned int lba_count = len / SECTOR_SIZE; 
   uint16_t magic = sizeof(binary_header_blk_t);
@@ -148,9 +147,7 @@ int ProtocolBinary::get_request(const char* key, int len, Operation* op) {
   if (req_handle == NULL){
 	printf("error: out of memory for request handle\n");
   }
-  binary_header_blk_t h = { magic, CMD_GET, req_handle, 
-                        bvec_handle, lba, 
-                        lba_count };
+  binary_header_blk_t h = { magic, CMD_GET, req_handle, lba, lba_count };
   
 	
   //TODO: store req_handle in op that goes into op_vector
@@ -176,7 +173,6 @@ int ProtocolBinary::get_request(const char* key, int len, Operation* op) {
  * Send a binary set request.
  */
 int ProtocolBinary::set_request(const char* key, const char* value, int len, Operation* op) {
-  struct bio_vec bvec_handle;
   unsigned long lba = atol(key);
   unsigned int lba_count = len / SECTOR_SIZE; 
   uint16_t magic = sizeof(binary_header_blk_t);
@@ -184,9 +180,7 @@ int ProtocolBinary::set_request(const char* key, const char* value, int len, Ope
   if (req_handle == NULL){
 	printf("error: out of memory for request handle\n");
   }
-  binary_header_blk_t h = { magic, CMD_SET, req_handle, //FIXME: req_handle here!
-                        bvec_handle, lba, 
-                        lba_count };
+  binary_header_blk_t h = { magic, CMD_SET, req_handle, lba, lba_count };
   
   op->req_handle = req_handle;
   
