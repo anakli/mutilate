@@ -218,6 +218,8 @@ uint64_t ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
     reinterpret_cast<binary_header_blk_t*>(evbuffer_pullup(input, sizeof(binary_header_blk_t)));
   assert(h);
 
+  assert(h->magic == sizeof(binary_header_blk_t));
+
   unsigned int targetLen = sizeof(binary_header_blk_t);
   if (h->opcode == CMD_GET) { //wait for whole response
   	//FIXME: 512 is sector size
