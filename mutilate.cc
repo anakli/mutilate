@@ -587,14 +587,14 @@ int main(int argc, char **argv) {
 
     fprintf(arch, "Skipped TXs = %" PRIu64 " (%.1f%%)\n\n", stats.skips,
             (double) stats.skips / total * 100);
-
+    /*
     fprintf(arch, "RX %10" PRIu64 " bytes : %6.1f MB/s\n",
             stats.rx_bytes,
             (double) stats.rx_bytes / 1024 / 1024 / (stats.stop - stats.start));
     fprintf(arch, "TX %10" PRIu64 " bytes : %6.1f MB/s\n",
             stats.tx_bytes,
             (double) stats.tx_bytes / 1024 / 1024 / (stats.stop - stats.start));
-
+    */
     char buf[64];
     double_tv_to_string(stats.start, buf, sizeof buf);
     fprintf(arch, "Start Time: %s (%f)\n", buf, stats.start);
@@ -1084,6 +1084,9 @@ void args_to_options(options_t* options) {
   options->lpause = args.lpause_given ? args.lpause_arg : 0;
   options->skip = args.skip_given;
   options->moderate = args.moderate_given;
+  
+  if (args.gen_pattern_given)
+    strcpy(options->gen_pattern, args.gen_pattern_arg);
 }
 
 void init_random_stuff() {

@@ -98,6 +98,7 @@ private:
   double next_time;    // Inter-transmission time parameters.
   double last_rx;      // Used to moderate transmission rate.
   double last_tx;
+  long int req_addr = 0; 
 
   // Parameters to track progress of the data loader.
   int loader_issued, loader_completed;

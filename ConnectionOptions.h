@@ -41,6 +41,7 @@ typedef struct {
   int  lambda_denom;
 
   bool moderate;
+  char gen_pattern[8];
 } options_t;
 
 #endif // CONNECTIONOPTIONS_H

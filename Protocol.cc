@@ -226,12 +226,12 @@ uint64_t ProtocolBinary::handle_response(evbuffer *input, Operation* op) {
   	targetLen += h->lba_count * SECTOR_SIZE;
   	if (length < targetLen) return 0;
   }
-
+  void* ret_req_handle;
+  ret_req_handle = h->req_handle;
   //printf("op handle: %x, req_handle: %x\n", op->req_handle, h->req_handle);  
   evbuffer_drain(input, targetLen);
   stats.rx_bytes += targetLen;
-  return (uint64_t) h->req_handle;
-	
+  return (uint64_t)ret_req_handle;	
 /*	
   // Read the first 24 bytes as a header
   int length = evbuffer_get_length(input);

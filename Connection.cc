@@ -226,7 +226,14 @@ void Connection::issue_something(server_t* serv, double now) {
   //string keystr = keygen->generate(lrand48() % options.records);
   
   // align for flash sector size of 512 bytes
-  string keystr = keygen->generate((lrand48() % options.records) & ~7);
+  string keystr;
+  if (strcmp(options.gen_pattern, "seq") == 0){
+    keystr = keygen->generate(req_addr);      
+    req_addr += 512;
+    if(req_addr >= options.records) req_addr = 0;
+  }else{
+    keystr = keygen->generate((lrand48() % options.records) & ~7);
+  }
   strcpy(key, keystr.c_str());
 
   if (drand48() < options.update) {
