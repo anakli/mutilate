@@ -30,6 +30,10 @@ by the number of servers." int default="10000"
 option "update" u "Ratio of set:get commands." float default="0.0"
 option "gen_pattern" g "Generate sequential/random memory requests \
 as specified [seq/rand]." string default="rand" 
+option "sectorsize" o "Sector size in bytes for the flash device." 
+int default="512"
+
+
 text "\nAdvanced options:"
 
 option "username" U "Username to use for SASL authentication." string

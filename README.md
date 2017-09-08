@@ -148,6 +148,8 @@ Command-line Options
       -u, --update=FLOAT            Ratio of set:get commands.  (default=`0.0')
       -g, --gen_pattern=STRING      Generate sequential/random memory requests as
                                       specified [seq/rand].  (default=`rand')
+      -o, --sectorsize=INT          Sector size in bytes for the flash device.
+                                      (default=`512')
     
     Advanced options:
       -U, --username=STRING         Username to use for SASL authentication.

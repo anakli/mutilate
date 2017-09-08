@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <queue>
 #include <string>
@@ -1070,7 +1071,7 @@ void args_to_options(options_t* options) {
   if (!options->records) options->records = 1;
   strcpy(options->keysize, args.keysize_arg);
   //  options->keysize = args.keysize_arg;
-  strcpy(options->valuesize, args.valuesize_arg);
+  //strcpy(options->valuesize, args.valuesize_arg);
   //  options->valuesize = args.valuesize_arg;
   options->update = args.update_arg;
   options->time = args.time_arg;
@@ -1084,9 +1085,16 @@ void args_to_options(options_t* options) {
   options->lpause = args.lpause_given ? args.lpause_arg : 0;
   options->skip = args.skip_given;
   options->moderate = args.moderate_given;
+
+  //if (args.gen_pattern_given)  
+  strcpy(options->gen_pattern, args.gen_pattern_arg);
   
-  if (args.gen_pattern_given)
-    strcpy(options->gen_pattern, args.gen_pattern_arg);
+  options->num_sectors = ceil(1.0*atoi(args.valuesize_arg)/(args.sectorsize_arg)); 
+  if (atoi(args.valuesize_arg)%args.sectorsize_arg){ 
+    sprintf(options->valuesize, "%d", options->num_sectors * args.sectorsize_arg);
+  } else {
+    strcpy(options->valuesize, args.valuesize_arg);
+  }
 }
 
 void init_random_stuff() {

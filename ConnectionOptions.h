@@ -42,6 +42,7 @@ typedef struct {
 
   bool moderate;
   char gen_pattern[8];
+  int  num_sectors;
 } options_t;
 
 #endif // CONNECTIONOPTIONS_H

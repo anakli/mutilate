@@ -229,10 +229,10 @@ void Connection::issue_something(server_t* serv, double now) {
   string keystr;
   if (strcmp(options.gen_pattern, "seq") == 0){
     keystr = keygen->generate(req_addr);      
-    req_addr += 512;
+    req_addr += options.num_sectors; 
     if(req_addr >= options.records) req_addr = 0;
   }else{
-    keystr = keygen->generate((lrand48() % options.records) & ~7);
+    keystr = keygen->generate((lrand48() % options.records));
   }
   strcpy(key, keystr.c_str());
 
