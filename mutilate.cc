@@ -1092,6 +1092,7 @@ void args_to_options(options_t* options) {
   options->num_sectors = ceil(1.0*atoi(args.valuesize_arg)/(args.sectorsize_arg)); 
   if (atoi(args.valuesize_arg)%args.sectorsize_arg){ 
     sprintf(options->valuesize, "%d", options->num_sectors * args.sectorsize_arg);
+    printf("WARNING: valuesize is not a multiple of sectorsize, rounding up valuesize to %s\n", options->valuesize);
   } else {
     strcpy(options->valuesize, args.valuesize_arg);
   }
